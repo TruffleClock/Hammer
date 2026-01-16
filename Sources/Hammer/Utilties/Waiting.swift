@@ -1,6 +1,5 @@
 import Foundation
 import UIKit
-import XCTest
 
 extension EventGenerator {
     /// Object to handle waiting
@@ -17,9 +16,8 @@ extension EventGenerator {
         /// The current state of the waiter
         public private(set) var state: State = .idle
 
-        /// We use XCTestExpectations internally to sleep the execution in a way that is friendly to tests
-        /// and does not block the main thread.
-        private let expectation = XCTestExpectation(description: "Hammer-Wait")
+        /// Used internally to track when the waiter should complete.
+        private var isCompleted = false
 
         /// Initialize a Waiter
         ///
@@ -43,12 +41,21 @@ extension EventGenerator {
             }
 
             self.state = .running
-            let result = XCTWaiter.wait(for: [self.expectation], timeout: self.timeout)
-            switch result {
-            case .completed:
-                self.state = .completed(timeout: false)
-            default:
-                self.state = .completed(timeout: true)
+
+            let deadline = Date().addingTimeInterval(self.timeout)
+            while true {
+                if self.isCompleted {
+                    self.state = .completed(timeout: false)
+                    break
+                }
+
+                if Date() >= deadline {
+                    self.state = .completed(timeout: true)
+                    break
+                }
+
+                let nextTick = Date(timeIntervalSinceNow: 0.01)
+                RunLoop.current.run(mode: .default, before: nextTick)
             }
         }
 
@@ -60,7 +67,7 @@ extension EventGenerator {
                 throw HammerError.waiterIsAlreadyCompleted
             }
 
-            self.expectation.fulfill()
+            self.isCompleted = true
         }
     }
 
